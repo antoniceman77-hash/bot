@@ -8,7 +8,7 @@ from flask import Flask
 app = Flask(__name__)
 
 # СЮДА ВСТАВЬТЕ ВАШ ВЕБХУК ДИСКОРДА ВНУТРЬ КАВЫЧЕК
-DISCORD_WEBHOOK_URL = "https://docs.webhook.site/api/examples.html"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1542130167844044830/gPu0J4ky4g-Arlo1DfqQQK0JDoVdYmlKerDJtwfORw-bp0bOhZML70N4ohM8C1PuwfNf
 
 @app.route('/')
 def home():
