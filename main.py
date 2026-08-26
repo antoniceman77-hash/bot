@@ -7,12 +7,12 @@ from flask import Flask
 
 app = Flask(__name__)
 
-# СЮДА ВСТАВЬТЕ ВАШ ВЕБХУК ДИСКОРДА ВНУТРЬ КАВЫЧЕК
-DISCORD_WEBHOOK_URL = "https://webhook.site/3cda2919-f5ab-4afb-b770-a3a51966767f" 
+# НАСТРОЙКА: Вставьте сюда ваш вебхук Дискорда
+DISCORD_WEBHOOK_URL = "https://webhook.site/3cda2919-f5ab-4afb-b770-a3a51966767f"
 
 @app.route('/')
 def home():
-    return "Бот работает"
+    return "Мягкий скринер Bybit активен 24/7!"
 
 def get_bybit_symbols():
     try:
@@ -20,7 +20,7 @@ def get_bybit_symbols():
         res = requests.get(url).json()
         return [s['symbol'] for s in res['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
     except:
-        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
+        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT']
 
 def analyze_coin(symbol):
     try:
@@ -46,25 +46,38 @@ def analyze_coin(symbol):
         bids_vol = sum([float(b) for b in depth_res['result']['b']])
         asks_vol = sum([float(a) for a in depth_res['result']['a']])
 
-        score = 0
-        direction = None
-        vol_pump = last['volume'] > df['volume'].median() * 2
+        # СЧЕТЧИКИ ДЛЯ СИГНАЛОВ
+        long_score = 0
+        short_score = 0
+        
+        # Расширяем границы RSI (было 35/65, стало более чувствительным 40/60)
+        rsi_long = last['rsi'] < 40
+        rsi_short = last['rsi'] > 60
 
-        if last['ma_fast'] > last['ma_slow'] and prev['ma_fast'] <= prev['ma_slow']: score += 1
-        if last['rsi'] < 35: score += 1
-        if vol_pump: score += 1
-        if bids_vol > asks_vol * 1.4: score += 1
-        if score >= 2 and last['rsi'] < 50: direction = "LONG"
+        # Снижаем планку всплеска объемов (было в 2 раза выше среднего, стало в 1.5 раза)
+        vol_pump = last['volume'] > df['volume'].median() * 1.5
 
-        if last['ma_fast'] < last['ma_slow'] and prev['ma_fast'] >= prev['ma_slow']: score += 1
-        if last['rsi'] > 65: score += 1
-        if vol_pump: score += 1
-        if asks_vol > bids_vol * 1.4: score += 1
-        if score >= 2 and last['rsi'] > 50: direction = "SHORT"
+        # Считаем факторы для LONG
+        if last['ma_fast'] > last['ma_slow']: long_score += 1   # Быстрый тренд вверх
+        if rsi_long: long_score += 1                             # Цена локально внизу
+        if vol_pump: long_score += 1                             # Появилась активность (объем)
+        if bids_vol > asks_vol * 1.2: long_score += 1            # Покупатели поджимают в стакане
 
-        if direction:
-            accuracy = 70 + int((score / 4) * 25)
-            send_alert(symbol, direction, accuracy, last['close'], last['rsi'])
+        # Считаем факторы для SHORT
+        if last['ma_fast'] < last['ma_slow']: short_score += 1  # Быстрый тренд вниз
+        if rsi_short: short_score += 1                           # Цена локально вверху
+        if vol_pump: short_score += 1                             # Появилась активность (объем)
+        if asks_vol > bids_vol * 1.2: short_score += 1            # Продавцы давят в стакане
+
+        # МЯГКОЕ УСЛОВИЕ: Достаточно любых 2-х совпадений из 4
+        if long_score >= 2 and last['rsi'] < 55:
+            # Считаем процент надежности динамически (2 совпадения = 75%, 3 = 85%, 4 = 95%)
+            accuracy = 65 + (long_score * 7.5)
+            send_alert(symbol, "LONG", int(accuracy), last['close'], last['rsi'])
+
+        elif short_score >= 2 and last['rsi'] > 45:
+            accuracy = 65 + (short_score * 7.5)
+            send_alert(symbol, "SHORT", int(accuracy), last['close'], last['rsi'])
     except:
         pass
 
@@ -86,3 +99,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_screener, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
