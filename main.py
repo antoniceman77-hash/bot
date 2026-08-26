@@ -8,7 +8,7 @@ from flask import Flask
 app = Flask(__name__)
 
 # НАСТРОЙКА: Вставьте сюда ваш вебхук Дискорда
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1542253078462464071/7yAvnuSSo7OTgf7WJVqDek6bghOHuIqn0IPVfpKmm5BRKdfdtrxV5bE1FAKXiYAZbqD2
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1542253078462464071/7yAvnuSSo7OTgf7WJVqDek6bghOHuIqn0IPVfpKmm5BRKdfdtrxV5bE1FAKXiYAZbqD2" 
 
 @app.route('/')
 def home():
