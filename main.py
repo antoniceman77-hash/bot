@@ -100,9 +100,12 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp):
         pass
 
 if __name__ == "__main__":
+    # Сразу шлем принудительный проверочный пуш
     url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
-    try: requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🚀 **Скринер v7.2 успешно запущен на мощном сервере! Ждем сигналы.**", "parse_mode": "Markdown"}, timeout=5)
-    except: pass
+    try:
+        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🎯 **Скринер v7.3 запущен без веб-сервера! Ожидайте сигналы.**", "parse_mode": "Markdown"}, timeout=5)
+    except:
+        pass
         
     while True:
         symbols = get_bybit_symbols()
