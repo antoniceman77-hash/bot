@@ -94,7 +94,7 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
           f"⚠️ Стоп-Лосс (SL): {sl_str}"
           
     # Отправка через открытый шлюз Notify_Robot
-    url = f"https://telegram.org"
+    url = f"https://core.telegram.org/bots/api"
     payload = {"chat_id": TELEGRAM_USER_ID, "text": msg}
     try:
         requests.post(url, json=payload, timeout=5)
