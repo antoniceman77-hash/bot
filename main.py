@@ -3,8 +3,9 @@ import time
 import threading
 import requests
 import pandas as pd
-from flask import Flask
 
+app = Flask(__name__) if 'Flask' in globals() else None
+from flask import Flask
 app = Flask(__name__)
 
 # НАСТРОЙКА: Ссылка на Дискорд в одну строку
@@ -12,7 +13,7 @@ DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1542253078462464071/7yAv
 
 @app.route('/')
 def home():
-    return "Скринер Bybit v5.0 в сети!"
+    return "Скринер Bybit v5.1 активен!"
 
 def get_bybit_symbols():
     try:
@@ -31,24 +32,23 @@ def analyze_coin(symbol):
             return
             
         klines = res['result']['list']
-        # Bybit возвращает данные от новых к старым. Сначала создаем таблицу:
         df = pd.DataFrame(klines, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = df[col].astype(float)
             
-        # ИСПРАВЛЕНИЕ: Переворачиваем данные ДО расчета индикаторов, чтобы shift(1) работал корректно!
         df = df.iloc[::-1].reset_index(drop=True)
 
-        # Индикаторы
+        # Скользящие средние
         df['ma_fast'] = df['close'].rolling(5).mean()
         df['ma_slow'] = df['close'].rolling(15).mean()
         
+        # Индикатор RSI
         delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         df['rsi'] = 100 - (100 / (1 + (gain / (loss + 0.00001))))
 
-        # Корректный расчет ATR на перевернутых данных
+        # Индикатор ATR (Чистая математика на Pandas, без сторонних библиотек)
         df['tr1'] = df['high'] - df['low']
         df['tr2'] = (df['high'] - df['close'].shift(1)).abs()
         df['tr3'] = (df['low'] - df['close'].shift(1)).abs()
@@ -67,16 +67,15 @@ def analyze_coin(symbol):
         long_score = 0
         short_score = 0
         
-        # Набираем баллы для мягкого фильтра
         if last['ma_fast'] > last['ma_slow']: long_score += 1
         if last['ma_fast'] < last['ma_slow']: short_score += 1
-        if last['rsi'] < 48: long_score += 1 # Сделали чуть шире для частых сигналов
+        if last['rsi'] < 48: long_score += 1
         if last['rsi'] > 52: short_score += 1
         if last['volume'] > prev['volume']:
             long_score += 1
             short_score += 1
 
-        # Сигнал LONG (нужно хотя бы 2 совпадения)
+        # Сигнал LONG
         if long_score >= 2 and last['rsi'] < 60:
             accuracy = 75 if long_score == 2 else 95
             sl = price - (1.5 * atr_val)
@@ -124,7 +123,7 @@ def send_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
 
 def run_screener():
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": "🚀 **Скринер v5.0 успешно запущен! Порядок ATR исправлен, ожидаем сигналы...**"}, timeout=5)
+        requests.post(DISCORD_WEBHOOK_URL, json={"content": "🚀 **Скринер v5.1 успешно запущен в облаке! Ожидаем сигналы...**"}, timeout=5)
     except:
         pass
         
@@ -139,3 +138,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_screener, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
