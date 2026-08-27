@@ -3,17 +3,16 @@ import time
 import threading
 import requests
 import pandas as pd
-
-app = Flask(__name__) if 'Flask' in globals() else None
 from flask import Flask
+
 app = Flask(__name__)
 
-# НАСТРОЙКА: Ссылка на Дискорд в одну строку
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1542253078462464071/7yAvnuSSo7OTgf7WJVqDek6bghOHuIqn0IPVfpKmm5BRKdfdtrxV5bE1FAKXiYAZbqD2" 
+# НАСТРОЙКА: Замените цифры ниже на ваш реальный ID, который вы получили из @userinfobot
+TELEGRAM_USER_ID = "7143940100"
 
 @app.route('/')
 def home():
-    return "Скринер Bybit v5.1 активен!"
+    return "Скринер Bybit в Telegram активен!"
 
 def get_bybit_symbols():
     try:
@@ -38,57 +37,42 @@ def analyze_coin(symbol):
             
         df = df.iloc[::-1].reset_index(drop=True)
 
-        # Скользящие средние
         df['ma_fast'] = df['close'].rolling(5).mean()
         df['ma_slow'] = df['close'].rolling(15).mean()
         
-        # Индикатор RSI
         delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         df['rsi'] = 100 - (100 / (1 + (gain / (loss + 0.00001))))
 
-        # Индикатор ATR (Чистая математика на Pandas, без сторонних библиотек)
         df['tr1'] = df['high'] - df['low']
         df['tr2'] = (df['high'] - df['close'].shift(1)).abs()
         df['tr3'] = (df['low'] - df['close'].shift(1)).abs()
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
         df['atr'] = df['tr'].rolling(14).mean()
 
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
-        
-        atr_val = last['atr']
-        price = last['close']
+        last, prev = df.iloc[-1], df.iloc[-2]
+        atr_val, price = last['atr'], last['close']
         
         if pd.isna(atr_val) or atr_val <= 0:
             return
 
-        long_score = 0
-        short_score = 0
-        
+        long_score, short_score = 0, 0
         if last['ma_fast'] > last['ma_slow']: long_score += 1
         if last['ma_fast'] < last['ma_slow']: short_score += 1
         if last['rsi'] < 48: long_score += 1
         if last['rsi'] > 52: short_score += 1
-        if last['volume'] > prev['volume']:
-            long_score += 1
-            short_score += 1
+        if last['volume'] > prev['volume']: long_score += 1; short_score += 1
 
-        # Сигнал LONG
         if long_score >= 2 and last['rsi'] < 60:
             accuracy = 75 if long_score == 2 else 95
-            sl = price - (1.5 * atr_val)
-            tp = price + (3.0 * atr_val)
-            send_alert(symbol, "LONG", accuracy, price, last['rsi'], sl, tp, atr_val)
+            sl, tp = price - (1.5 * atr_val), price + (3.0 * atr_val)
+            send_telegram_alert(symbol, "LONG", accuracy, price, last['rsi'], sl, tp, atr_val)
             
-        # Сигнал SHORT
         elif short_score >= 2 and last['rsi'] > 40:
             accuracy = 75 if short_score == 2 else 95
-            sl = price + (1.5 * atr_val)
-            tp = price - (3.0 * atr_val)
-            send_alert(symbol, "SHORT", accuracy, price, last['rsi'], sl, tp, atr_val)
-            
+            sl, tp = price + (1.5 * atr_val), price - (3.0 * atr_val)
+            send_telegram_alert(symbol, "SHORT", accuracy, price, last['rsi'], sl, tp, atr_val)
     except:
         pass
 
@@ -97,35 +81,31 @@ def format_coin_price(val):
     if val < 1: return f"{val:.4f}"
     return f"{val:.2f}"
 
-def send_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
+def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
     emoji = "🟢" if direction == "LONG" else "🔴"
+    p_str, sl_str, tp_str, atr_str = format_coin_price(price), format_coin_price(sl), format_coin_price(tp), format_coin_price(atr)
     
-    p_str = format_coin_price(price)
-    sl_str = format_coin_price(sl)
-    tp_str = format_coin_price(tp)
-    atr_str = format_coin_price(atr)
-    
-    msg = f"{emoji} **СИГНАЛ: {symbol}**\n" \
-          f" Направление: **{direction}**\n" \
-          f" Надежность: **{accuracy}%**\n" \
-          f" Цена входа: **{p_str}**\n" \
-          f" RSI: {rsi:.1f} | ATR: {atr_str}\n" \
-          f" 🎯 **Тейк-Профит (TP): {tp_str}**\n" \
-          f" ⚠️ **Стоп-Лосс (SL): {sl_str}**"
+    msg = f"{emoji} СИГНАЛ: {symbol}\n" \
+          f"Направление: {direction}\n" \
+          f"Надежность: {accuracy}%\n" \
+          f"Цена входа: {p_str}\n" \
+          f"RSI: {rsi:.1f} | ATR: {atr_str}\n" \
+          f"🎯 Тейк-Профит (TP): {tp_str}\n" \
+          f"⚠️ Стоп-Лосс (SL): {sl_str}"
+          
+    # Отправка через открытый шлюз Notify_Robot
+    url = f"https://telegram.org"
+    payload = {"chat_id": TELEGRAM_USER_ID, "text": msg}
     try:
-        res = requests.post(DISCORD_WEBHOOK_URL, json={"content": msg}, timeout=5)
-        if res.status_code == 429:
-            time.sleep(5)
-        else:
-            time.sleep(2)
+        requests.post(url, json=payload, timeout=5)
+        time.sleep(2)
     except:
         pass
 
 def run_screener():
-    try:
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": "🚀 **Скринер v5.1 успешно запущен в облаке! Ожидаем сигналы...**"}, timeout=5)
-    except:
-        pass
+    url = f"https://telegram.org"
+    try: requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🚀 Скринер Bybit переключен на Telegram и успешно запущен!"}, timeout=5)
+    except: pass
         
     while True:
         symbols = get_bybit_symbols()
@@ -136,6 +116,4 @@ def run_screener():
 
 if __name__ == "__main__":
     threading.Thread(target=run_screener, daemon=True).start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
