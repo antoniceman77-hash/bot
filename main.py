@@ -1,27 +1,36 @@
 import os
 import time
+import threading
 import requests
 import pandas as pd
+from flask import Flask
+
+# Инициализируем веб-сервер, чтобы Render не выдавал ошибку портов
+app = Flask(__name__)
 
 # =====================================================================
-# ⚙️ НАСТРОЙКИ (ВСТАВЬТЕ СВОИ ДАННЫЕ СТРОГО ВНУТРИ КАВЫЧЕК)
+# ⚙️ НАСТРОЙКИ (ВСТАВЬТЕ ВАШИ ДАННЫЕ ВНУТРИ КАВЫЧЕК В ОДНУ СТРОКУ)
 # =====================================================================
 TELEGRAM_USER_ID = "7143940100"
 BOT_TOKEN = "8845220550:AAHhBRMKYFgqzqn-CTMEMVDcL5W-KOlJvlE"
 # =====================================================================
+
+@app.route('/')
+def home():
+    return "Скринер Bybit v7.1 активен и работает в фоне!"
 
 def get_bybit_symbols():
     try:
         url = "https://bybit.com"
         res = requests.get(url, timeout=5).json()
         all_symbols = [s['symbol'] for s in res['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
-        return all_symbols[:40]
+        return all_symbols[:30] # Берем ТОП-30 монет для максимальной скорости без зависаний
     except:
-        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'SUIUSDT', 'NEARUSDT']
+        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT']
 
 def analyze_coin(symbol):
     try:
-        url = f"https://bybit.com{symbol}&interval=5&limit=40"
+        url = f"https://bybit.com{symbol}&interval=5&limit=30"
         res = requests.get(url, timeout=5).json()
         
         if 'result' not in res or 'list' not in res['result'] or not res['result']['list']:
@@ -34,25 +43,21 @@ def analyze_coin(symbol):
             
         df = df.iloc[::-1].reset_index(drop=True)
 
-        # Вычисляем MA
         df['ma_fast'] = df['close'].rolling(5).mean()
         df['ma_slow'] = df['close'].rolling(15).mean()
         
-        # Вычисляем RSI
         delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        gain = (delta.where(delta > 0, 0)).rolling(10).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(10).mean()
         df['rsi'] = 100 - (100 / (1 + (gain / (loss + 0.00001))))
 
-        # Вычисляем ATR
         df['tr1'] = df['high'] - df['low']
         df['tr2'] = (df['high'] - df['close'].shift(1)).abs()
         df['tr3'] = (df['low'] - df['close'].shift(1)).abs()
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
-        df['atr'] = df['tr'].rolling(14).mean()
+        df['atr'] = df['tr'].rolling(10).mean()
 
-        # Средний объем
-        df['vol_avg'] = df['volume'].rolling(15).mean()
+        df['vol_avg'] = df['volume'].rolling(10).mean()
 
         last, prev = df.iloc[-1], df.iloc[-2]
         atr_val, price = last['atr'], last['close']
@@ -60,30 +65,21 @@ def analyze_coin(symbol):
         if pd.isna(atr_val) or atr_val <= 0:
             return
 
-        long_score = 0
-        short_score = 0
-        
+        long_score, short_score = 0, 0
         if last['ma_fast'] > last['ma_slow']: long_score += 1
         if last['ma_fast'] < last['ma_slow']: short_score += 1
-        
         if last['rsi'] < 52: long_score += 1
         if last['rsi'] > 48: short_score += 1
-        
-        if last['volume'] > last['vol_avg'] * 1.1:
-            long_score += 1
-            short_score += 1
+        if last['volume'] > last['vol_avg'] * 1.1: long_score += 1; short_score += 1
 
-        # Сигналы
         if long_score >= 2 and last['rsi'] < 60:
             accuracy = 75 if long_score == 2 else 95
-            sl = price - (1.5 * atr_val)
-            tp = price + (3.0 * atr_val)
+            sl, tp = price - (1.5 * atr_val), price + (3.0 * atr_val)
             send_telegram_alert(symbol, "LONG", accuracy, price, last['rsi'], sl, tp)
             
         elif short_score >= 2 and last['rsi'] > 40:
             accuracy = 75 if short_score == 2 else 95
-            sl = price + (1.5 * atr_val)
-            tp = price - (3.0 * atr_val)
+            sl, tp = price + (1.5 * atr_val), price - (3.0 * atr_val)
             send_telegram_alert(symbol, "SHORT", accuracy, price, last['rsi'], sl, tp)
     except:
         pass
@@ -112,10 +108,11 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp):
     except:
         pass
 
-def main():
+def run_screener():
+    # Стартовый пуш идет прямо из фонового потока
     url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
     try: 
-        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🎯 **Финальная версия v7.0 запущена напрямую как Воркер! Зависания устранены, сканирую рынок...**", "parse_mode": "Markdown"}, timeout=5)
+        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🔥 **Бесплатный скринер v7.1 успешно запущен! Сканирование Bybit началось.**", "parse_mode": "Markdown"}, timeout=5)
     except: 
         pass
         
@@ -123,8 +120,12 @@ def main():
         symbols = get_bybit_symbols()
         for symbol in symbols:
             analyze_coin(symbol)
-            time.sleep(0.2)
-        time.sleep(15)
+            time.sleep(0.3) # Плавный обход лимитов биржи
+        time.sleep(20)
 
 if __name__ == "__main__":
-    main()
+    # ЗАПУСКАЕМ СКРИНЕР В ОТДЕЛЬНОМ НЕЗАВИСИМОМ ПОТОКЕ (Он не заблокирует Flask!)
+    threading.Thread(target=run_screener, daemon=True).start()
+    # Запуск веб-заглушки для Render
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
