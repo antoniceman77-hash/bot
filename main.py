@@ -7,12 +7,16 @@ from flask import Flask
 
 app = Flask(__name__)
 
-# НАСТРОЙКА: Замените цифры ниже на ваш реальный ID, который вы получили из @userinfobot
+# =====================================================================
+# ⚙️ НАСТРОЙКИ БОТА (ЗАПОЛНИТЕ СТРОГО ВНУТРИ КАВЫЧЕК)
+# =====================================================================
 TELEGRAM_USER_ID = "7143940100"
+BOT_TOKEN = "https://core.telegram.org/bots/api"
+# =====================================================================
 
 @app.route('/')
 def home():
-    return "Скринер Bybit в Telegram активен!"
+    return "Скринер Bybit в Telegram активен и работает!"
 
 def get_bybit_symbols():
     try:
@@ -85,17 +89,16 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
     emoji = "🟢" if direction == "LONG" else "🔴"
     p_str, sl_str, tp_str, atr_str = format_coin_price(price), format_coin_price(sl), format_coin_price(tp), format_coin_price(atr)
     
-    msg = f"{emoji} СИГНАЛ: {symbol}\n" \
-          f"Направление: {direction}\n" \
-          f"Надежность: {accuracy}%\n" \
-          f"Цена входа: {p_str}\n" \
+    msg = f"{emoji} **СИГНАЛ: {symbol}**\n" \
+          f"Направление: **{direction}**\n" \
+          f"Надежность: **{accuracy}%**\n" \
+          f"Цена входа: **{p_str}**\n" \
           f"RSI: {rsi:.1f} | ATR: {atr_str}\n" \
-          f"🎯 Тейк-Профит (TP): {tp_str}\n" \
-          f"⚠️ Стоп-Лосс (SL): {sl_str}"
+          f"🎯 Тейк-Профит (TP): **{tp_str}**\n" \
+          f"⚠️ Стоп-Лосс (SL): **{sl_str}**"
           
-    # Отправка через открытый шлюз Notify_Robot
-    url = f"https://core.telegram.org/bots/api"
-    payload = {"chat_id": TELEGRAM_USER_ID, "text": msg}
+    url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_USER_ID, "text": msg, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload, timeout=5)
         time.sleep(2)
@@ -103,9 +106,12 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp, atr):
         pass
 
 def run_screener():
-    url = f"https://telegram.org"
-    try: requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🚀 Скринер Bybit переключен на Telegram и успешно запущен!"}, timeout=5)
-    except: pass
+    # Отправка стартового сообщения
+    url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
+    try: 
+        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🚀 **Скринер Bybit успешно запущен! Ожидайте скальп-сигналы.**", "parse_mode": "Markdown"}, timeout=5)
+    except: 
+        pass
         
     while True:
         symbols = get_bybit_symbols()
@@ -117,3 +123,5 @@ def run_screener():
 if __name__ == "__main__":
     threading.Thread(target=run_screener, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+            
