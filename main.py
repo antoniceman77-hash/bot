@@ -1,12 +1,7 @@
 import os
 import time
-import threading
 import requests
 import pandas as pd
-from flask import Flask
-
-# Инициализируем веб-сервер, чтобы Render не выдавал ошибку портов
-app = Flask(__name__)
 
 # =====================================================================
 # ⚙️ НАСТРОЙКИ (ВСТАВЬТЕ ВАШИ ДАННЫЕ ВНУТРИ КАВЫЧЕК В ОДНУ СТРОКУ)
@@ -15,16 +10,12 @@ TELEGRAM_USER_ID = "7143940100"
 BOT_TOKEN = "8845220550:AAHhBRMKYFgqzqn-CTMEMVDcL5W-KOlJvlE"
 # =====================================================================
 
-@app.route('/')
-def home():
-    return "Скринер Bybit v7.1 активен и работает в фоне!"
-
 def get_bybit_symbols():
     try:
         url = "https://bybit.com"
         res = requests.get(url, timeout=5).json()
         all_symbols = [s['symbol'] for s in res['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
-        return all_symbols[:30] # Берем ТОП-30 монет для максимальной скорости без зависаний
+        return all_symbols[:40]
     except:
         return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT']
 
@@ -108,24 +99,14 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp):
     except:
         pass
 
-def run_screener():
-    # Стартовый пуш идет прямо из фонового потока
+if __name__ == "__main__":
     url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
-    try: 
-        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🔥 **Бесплатный скринер v7.1 успешно запущен! Сканирование Bybit началось.**", "parse_mode": "Markdown"}, timeout=5)
-    except: 
-        pass
+    try: requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🚀 **Скринер v7.2 успешно запущен на мощном сервере! Ждем сигналы.**", "parse_mode": "Markdown"}, timeout=5)
+    except: pass
         
     while True:
         symbols = get_bybit_symbols()
         for symbol in symbols:
             analyze_coin(symbol)
-            time.sleep(0.3) # Плавный обход лимитов биржи
+            time.sleep(0.3)
         time.sleep(20)
-
-if __name__ == "__main__":
-    # ЗАПУСКАЕМ СКРИНЕР В ОТДЕЛЬНОМ НЕЗАВИСИМОМ ПОТОКЕ (Он не заблокирует Flask!)
-    threading.Thread(target=run_screener, daemon=True).start()
-    # Запуск веб-заглушки для Render
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
