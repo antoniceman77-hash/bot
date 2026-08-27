@@ -1,22 +1,14 @@
 import os
 import time
-import threading
 import requests
 import pandas as pd
-from flask import Flask
-
-app = Flask(__name__)
 
 # =====================================================================
-# ⚙️ НАСТРОЙКИ (ВСТАВЬТЕ СВОИ ДАННЫЕ)
+# ⚙️ НАСТРОЙКИ (ВСТАВЬТЕ СВОИ ДАННЫЕ СТРОГО ВНУТРИ КАВЫЧЕК)
 # =====================================================================
 TELEGRAM_USER_ID = "7143940100"
 BOT_TOKEN = "8845220550:AAHhBRMKYFgqzqn-CTMEMVDcL5W-KOlJvlE"
 # =====================================================================
-
-@app.route('/')
-def home():
-    return "Скринер Bybit v6.2 Онлайн!"
 
 def get_bybit_symbols():
     try:
@@ -29,7 +21,6 @@ def get_bybit_symbols():
 
 def analyze_coin(symbol):
     try:
-        # Убрали привязку ко времени, берем чистый поток последних 40 свечей
         url = f"https://bybit.com{symbol}&interval=5&limit=40"
         res = requests.get(url, timeout=5).json()
         
@@ -78,11 +69,11 @@ def analyze_coin(symbol):
         if last['rsi'] < 52: long_score += 1
         if last['rsi'] > 48: short_score += 1
         
-        if last['volume'] > last['vol_avg'] * 1.1: # Сделали объем еще мягче (всего +10% к среднему)
+        if last['volume'] > last['vol_avg'] * 1.1:
             long_score += 1
             short_score += 1
 
-        # Сигналы (Достаточно 2 совпадений из 3 возможных)
+        # Сигналы
         if long_score >= 2 and last['rsi'] < 60:
             accuracy = 75 if long_score == 2 else 95
             sl = price - (1.5 * atr_val)
@@ -121,10 +112,10 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp):
     except:
         pass
 
-def run_screener():
+def main():
     url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
     try: 
-        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "⚡️ **Скринер синхронизирован с биржей Bybit v6.2! Бот готов выдавать сигналы.**", "parse_mode": "Markdown"}, timeout=5)
+        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🎯 **Финальная версия v7.0 запущена напрямую как Воркер! Зависания устранены, сканирую рынок...**", "parse_mode": "Markdown"}, timeout=5)
     except: 
         pass
         
@@ -133,8 +124,7 @@ def run_screener():
         for symbol in symbols:
             analyze_coin(symbol)
             time.sleep(0.2)
-        time.sleep(15) # Опрос каждые 15 секунд для максимальной скорости лонга/шорта
+        time.sleep(15)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_screener, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    main()
