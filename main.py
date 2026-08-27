@@ -16,22 +16,22 @@ BOT_TOKEN = "8845220550:AAHhBRMKYFgqzqn-CTMEMVDcL5W-KOlJvlE"
 
 @app.route('/')
 def home():
-    return "Активный Скринер Bybit v6.1 запущен!"
+    return "Скринер Bybit v6.2 Онлайн!"
 
 def get_bybit_symbols():
     try:
-        url = "https://api.bybit.com/v5/market/instruments-info?category=linear"
-        res = requests.get(url).json()
+        url = "https://bybit.com"
+        res = requests.get(url, timeout=5).json()
         all_symbols = [s['symbol'] for s in res['result']['list'] if s['status'] == 'Trading' and s['quoteCoin'] == 'USDT']
-        # Берем ТОП-40 самых ликвидных монет, чтобы бот не зависал на проверке сотен щиткоинов
         return all_symbols[:40]
     except:
-        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'LINKUSDT', 'ADAUSDT', 'SUIUSDT', 'NEARUSDT']
+        return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'AVAXUSDT', 'SUIUSDT', 'NEARUSDT']
 
 def analyze_coin(symbol):
     try:
+        # Убрали привязку ко времени, берем чистый поток последних 40 свечей
         url = f"https://bybit.com{symbol}&interval=5&limit=40"
-        res = requests.get(url).json()
+        res = requests.get(url, timeout=5).json()
         
         if 'result' not in res or 'list' not in res['result'] or not res['result']['list']:
             return
@@ -43,7 +43,7 @@ def analyze_coin(symbol):
             
         df = df.iloc[::-1].reset_index(drop=True)
 
-        # Вычисляем скользящие средние
+        # Вычисляем MA
         df['ma_fast'] = df['close'].rolling(5).mean()
         df['ma_slow'] = df['close'].rolling(15).mean()
         
@@ -60,7 +60,7 @@ def analyze_coin(symbol):
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
         df['atr'] = df['tr'].rolling(14).mean()
 
-        # Средний объем для фильтра аномалий
+        # Средний объем
         df['vol_avg'] = df['volume'].rolling(15).mean()
 
         last, prev = df.iloc[-1], df.iloc[-2]
@@ -72,28 +72,24 @@ def analyze_coin(symbol):
         long_score = 0
         short_score = 0
         
-        # УСЛОВИЯ СИГНАЛОВ (Мягкие и чувствительные)
         if last['ma_fast'] > last['ma_slow']: long_score += 1
         if last['ma_fast'] < last['ma_slow']: short_score += 1
         
-        # Расширили зоны RSI до 50 для максимальной частоты сигналов внутри дня
-        if last['rsi'] < 50: long_score += 1
-        if last['rsi'] > 50: short_score += 1
+        if last['rsi'] < 52: long_score += 1
+        if last['rsi'] > 48: short_score += 1
         
-        # Аномальный объем (текущий объем выше среднего на 20%)
-        if last['volume'] > last['vol_avg'] * 1.2:
+        if last['volume'] > last['vol_avg'] * 1.1: # Сделали объем еще мягче (всего +10% к среднему)
             long_score += 1
             short_score += 1
 
-        # Отправка LONG
-        if long_score >= 2 and last['rsi'] < 58:
+        # Сигналы (Достаточно 2 совпадений из 3 возможных)
+        if long_score >= 2 and last['rsi'] < 60:
             accuracy = 75 if long_score == 2 else 95
             sl = price - (1.5 * atr_val)
             tp = price + (3.0 * atr_val)
             send_telegram_alert(symbol, "LONG", accuracy, price, last['rsi'], sl, tp)
             
-        # Отправка SHORT
-        elif short_score >= 2 and last['rsi'] > 42:
+        elif short_score >= 2 and last['rsi'] > 40:
             accuracy = 75 if short_score == 2 else 95
             sl = price + (1.5 * atr_val)
             tp = price - (3.0 * atr_val)
@@ -121,14 +117,14 @@ def send_telegram_alert(symbol, direction, accuracy, price, rsi, sl, tp):
     payload = {"chat_id": TELEGRAM_USER_ID, "text": msg, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload, timeout=5)
-        time.sleep(2) # Защита лимитов Telegram
+        time.sleep(2)
     except:
         pass
 
 def run_screener():
     url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
     try: 
-        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "🔥 **Активная версия Скринера v6.1 запущена! Фильтры смягчены, ТОП-40 монет в обработке.**", "parse_mode": "Markdown"}, timeout=5)
+        requests.post(url, json={"chat_id": TELEGRAM_USER_ID, "text": "⚡️ **Скринер синхронизирован с биржей Bybit v6.2! Бот готов выдавать сигналы.**", "parse_mode": "Markdown"}, timeout=5)
     except: 
         pass
         
@@ -137,7 +133,7 @@ def run_screener():
         for symbol in symbols:
             analyze_coin(symbol)
             time.sleep(0.2)
-        time.sleep(30) # Уменьшили паузу между кругами до 30 секунд
+        time.sleep(15) # Опрос каждые 15 секунд для максимальной скорости лонга/шорта
 
 if __name__ == "__main__":
     threading.Thread(target=run_screener, daemon=True).start()
